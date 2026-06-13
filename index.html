@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>生活打卡 Web 原型</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="应用导航">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">合</div>
+          <div>
+            <h1>生活打卡</h1>
+            <p>方案 A Web 原型</p>
+          </div>
+        </div>
+
+        <nav class="tabs" aria-label="主页面">
+          <button class="tab-button is-active" type="button" data-view="today">
+            <span class="tab-icon" aria-hidden="true">⌖</span>
+            今日打卡
+          </button>
+          <button class="tab-button" type="button" data-view="history">
+            <span class="tab-icon" aria-hidden="true">◷</span>
+            历史记录
+          </button>
+        </nav>
+
+        <div class="sidebar-note">
+          <strong>固定地点</strong>
+          <span>合肥工业大学屯溪路校区</span>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <section class="view is-active" id="today-view" aria-labelledby="today-title">
+          <div class="view-header">
+            <div>
+              <h2 id="today-title">今日打卡</h2>
+              <p>记录当前时间、校园体验评分、坐标和本地图片。</p>
+            </div>
+            <button class="ghost-button" id="refresh-time" type="button">刷新时间</button>
+          </div>
+
+          <form class="checkin-form" id="checkin-form">
+            <section class="panel">
+              <div class="panel-title">
+                <span>地点信息</span>
+                <span class="status-pill">固定打卡点</span>
+              </div>
+              <div class="place-grid">
+                <label>
+                  <span>地点</span>
+                  <input type="text" value="合肥工业大学屯溪路校区" readonly />
+                </label>
+                <label>
+                  <span>地址</span>
+                  <input type="text" value="安徽省合肥市包河区屯溪路 193 号" readonly />
+                </label>
+                <label>
+                  <span>纬度</span>
+                  <input type="text" value="31.843559" readonly />
+                </label>
+                <label>
+                  <span>经度</span>
+                  <input type="text" value="117.295754" readonly />
+                </label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <span>打卡时间</span>
+              </div>
+              <div class="time-row">
+                <time id="current-time" datetime=""></time>
+                <span>保存时将写入这次打卡记录</span>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <span>体验评分</span>
+                <span class="score-average" id="live-average">平均 8.0</span>
+              </div>
+              <div class="score-list" id="score-list">
+                <label class="score-row">
+                  <span>环境</span>
+                  <input type="range" min="1" max="10" value="8" data-score="环境" />
+                  <output>8</output>
+                </label>
+                <label class="score-row">
+                  <span>教学质量</span>
+                  <input type="range" min="1" max="10" value="8" data-score="教学质量" />
+                  <output>8</output>
+                </label>
+                <label class="score-row">
+                  <span>食堂环境</span>
+                  <input type="range" min="1" max="10" value="8" data-score="食堂环境" />
+                  <output>8</output>
+                </label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <span>本地图片</span>
+                <span class="muted">最多 3 张</span>
+              </div>
+              <label class="upload-zone" for="image-input">
+                <span class="upload-icon" aria-hidden="true">＋</span>
+                <span>选择本地图片</span>
+                <small>图片只保存在浏览器本地存储中</small>
+              </label>
+              <input id="image-input" type="file" accept="image/*" multiple hidden />
+              <div class="image-preview-grid" id="image-preview-grid" aria-live="polite"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <span>备注</span>
+                <span class="muted">可选</span>
+              </div>
+              <textarea id="note-input" rows="4" placeholder="记录今天的感受，例如课程体验、食堂印象、校园环境。"></textarea>
+            </section>
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit">保存打卡</button>
+              <button class="ghost-button" id="reset-form" type="button">重置</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="view" id="history-view" aria-labelledby="history-title">
+          <div class="view-header">
+            <div>
+              <h2 id="history-title">历史记录</h2>
+              <p>按时间倒序查看已保存的本地打卡。</p>
+            </div>
+            <button class="ghost-button danger" id="clear-records" type="button">清空记录</button>
+          </div>
+
+          <div class="history-layout">
+            <section class="history-list" id="history-list" aria-live="polite"></section>
+            <aside class="detail-panel" id="detail-panel" aria-live="polite">
+              <div class="empty-detail">
+                <span aria-hidden="true">⌖</span>
+                <p>选择一条记录查看详情</p>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <template id="empty-history-template">
+      <div class="empty-state">
+        <span aria-hidden="true">◷</span>
+        <h3>暂无打卡记录</h3>
+        <p>保存今日打卡后，记录会显示在这里。</p>
+      </div>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
