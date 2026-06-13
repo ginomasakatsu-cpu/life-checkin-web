@@ -4,6 +4,7 @@ const DEFAULT_LOCATION_SOURCE = {
   label: "手动输入",
   capturedAt: null,
 };
+const REVERSE_GEOCODE_ENDPOINT = "https://nominatim.openstreetmap.org/reverse";
 
 const state = {
   currentTime: new Date(),
@@ -93,7 +94,7 @@ function renderLocationStatus(status = state.locationSource.label, tone = "neutr
   els.locationStatus.classList.toggle("is-error", tone === "error");
 }
 
-function handleUseLocation() {
+async function handleUseLocation() {
   if (!window.isSecureContext) {
     renderLocationStatus("定位需要 HTTPS", "error");
     showToast("定位需要 HTTPS 环境，请手动输入地点");
@@ -109,32 +110,92 @@ function handleUseLocation() {
   els.useLocation.disabled = true;
   renderLocationStatus("定位中...");
 
-  navigator.geolocation.getCurrentPosition(
-    () => {
-      state.locationSource = {
-        method: "browser",
-        label: "浏览器定位",
-        capturedAt: new Date().toISOString(),
-      };
-      if (!els.placeInput.value.trim()) {
-        els.placeInput.value = "当前位置";
-      }
-      renderLocationStatus("已定位，可编辑地点", "success");
-      showToast("已获取当前位置");
-      els.useLocation.disabled = false;
-    },
-    () => {
-      state.locationSource = { ...DEFAULT_LOCATION_SOURCE };
-      renderLocationStatus("定位失败，请手动输入", "error");
-      showToast("定位失败，请手动输入地点");
-      els.useLocation.disabled = false;
-    },
-    {
+  let position;
+  try {
+    position = await getBrowserPosition();
+  } catch {
+    state.locationSource = { ...DEFAULT_LOCATION_SOURCE };
+    renderLocationStatus("定位失败，请手动输入", "error");
+    showToast("定位失败，请手动输入地点");
+    els.useLocation.disabled = false;
+    return;
+  }
+
+  state.locationSource = {
+    method: "browser",
+    label: "浏览器定位",
+    capturedAt: new Date().toISOString(),
+  };
+  renderLocationStatus("解析地址中...");
+
+  try {
+    const address = await reverseGeocode(position.coords);
+    els.placeInput.value = address || "当前位置";
+    renderLocationStatus(address ? "已填入具体地址" : "已定位，可编辑地点", "success");
+    showToast(address ? "已填入当前位置地址" : "已获取当前位置");
+  } catch {
+    els.placeInput.value = "当前位置";
+    renderLocationStatus("地址解析失败，可编辑", "error");
+    showToast("已定位，但地址解析失败，可手动修改");
+  } finally {
+    els.useLocation.disabled = false;
+  }
+}
+
+function getBrowserPosition() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy: false,
       timeout: 10000,
       maximumAge: 300000,
+    });
+  });
+}
+
+async function reverseGeocode(coords) {
+  const url = new URL(REVERSE_GEOCODE_ENDPOINT);
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("lat", String(coords.latitude));
+  url.searchParams.set("lon", String(coords.longitude));
+  url.searchParams.set("zoom", "18");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("accept-language", "zh-CN");
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
     },
-  );
+  });
+  if (!response.ok) {
+    throw new Error("Reverse geocoding failed");
+  }
+
+  const data = await response.json();
+  return formatAddress(data);
+}
+
+function formatAddress(data) {
+  if (typeof data?.display_name === "string") {
+    return data.display_name.trim();
+  }
+
+  const address = data?.address;
+  if (!address) return "";
+
+  return [
+    address.amenity,
+    address.building,
+    address.road,
+    address.neighbourhood,
+    address.suburb,
+    address.city_district,
+    address.city || address.town || address.village,
+    address.state,
+    address.country,
+  ]
+    .filter(Boolean)
+    .filter((value, index, parts) => parts.indexOf(value) === index)
+    .join("，");
 }
 
 function renderScores() {

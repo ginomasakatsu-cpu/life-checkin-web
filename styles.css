@@ -245,6 +245,19 @@ button {
   color: var(--danger);
 }
 
+.map-attribution {
+  display: inline-flex;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.map-attribution:hover {
+  color: var(--accent-strong);
+}
+
 label {
   display: grid;
   gap: 7px;
