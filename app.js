@@ -5,10 +5,17 @@ const DEFAULT_LOCATION_SOURCE = {
   capturedAt: null,
 };
 const REVERSE_GEOCODE_ENDPOINT = "https://nominatim.openstreetmap.org/reverse";
+const DEFAULT_SCORE_ITEMS = [
+  { tagName: "环境", score: 8 },
+  { tagName: "服务", score: 8 },
+  { tagName: "味道", score: 8 },
+  { tagName: "性价比", score: 8 },
+];
 
 const state = {
   currentTime: new Date(),
   locationSource: { ...DEFAULT_LOCATION_SOURCE },
+  scoreItems: createDefaultScoreItems(),
   selectedImages: [],
   records: [],
   selectedRecordId: null,
@@ -21,10 +28,13 @@ const els = {
   currentTime: document.querySelector("#current-time"),
   refreshTime: document.querySelector("#refresh-time"),
   resetForm: document.querySelector("#reset-form"),
+  checkInPointInput: document.querySelector("#checkin-point-input"),
   placeInput: document.querySelector("#place-input"),
   useLocation: document.querySelector("#use-location"),
   locationStatus: document.querySelector("#location-status"),
-  scoreInputs: document.querySelectorAll("[data-score]"),
+  scoreList: document.querySelector("#score-list"),
+  customScoreInput: document.querySelector("#custom-score-input"),
+  addScoreTag: document.querySelector("#add-score-tag"),
   liveAverage: document.querySelector("#live-average"),
   imageInput: document.querySelector("#image-input"),
   previewGrid: document.querySelector("#image-preview-grid"),
@@ -42,7 +52,7 @@ function init() {
   bindEvents();
   renderTime();
   renderLocationStatus();
-  renderScores();
+  renderScoreList();
   renderImagePreviews();
   renderHistory();
   renderDetail();
@@ -60,12 +70,12 @@ function bindEvents() {
 
   els.resetForm.addEventListener("click", resetForm);
   els.useLocation.addEventListener("click", handleUseLocation);
+  els.addScoreTag.addEventListener("click", addCustomScoreTag);
 
-  els.scoreInputs.forEach((input) => {
-    input.addEventListener("input", () => {
-      input.closest(".score-row").querySelector("output").value = input.value;
-      renderScores();
-    });
+  els.customScoreInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addCustomScoreTag();
   });
 
   els.imageInput.addEventListener("change", handleImageSelection);
@@ -198,15 +208,94 @@ function formatAddress(data) {
     .join("，");
 }
 
+function createDefaultScoreItems() {
+  return DEFAULT_SCORE_ITEMS.map((item) => ({
+    id: createId("score"),
+    tagName: item.tagName,
+    score: item.score,
+  }));
+}
+
+function createId(prefix) {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function renderScoreList() {
+  els.scoreList.innerHTML = "";
+
+  state.scoreItems.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "score-row";
+    row.innerHTML = `
+      <span class="score-label">${escapeHtml(item.tagName)}</span>
+      <input type="range" min="1" max="10" value="${item.score}" data-score-id="${escapeHtml(item.id)}" />
+      <output>${item.score}</output>
+      <button class="score-delete-button" type="button" aria-label="删除 ${escapeHtml(item.tagName)} 评分">×</button>
+    `;
+
+    const input = row.querySelector("input");
+    const output = row.querySelector("output");
+    input.addEventListener("input", () => {
+      item.score = Number(input.value);
+      output.value = input.value;
+      renderScores();
+    });
+
+    row.querySelector("button").addEventListener("click", () => removeScoreItem(item.id));
+    els.scoreList.appendChild(row);
+  });
+
+  renderScores();
+}
+
 function renderScores() {
-  const average = getCurrentScoreItems().reduce((sum, item) => sum + item.score, 0) / els.scoreInputs.length;
+  const scoreItems = getCurrentScoreItems();
+  const average = scoreItems.reduce((sum, item) => sum + item.score, 0) / scoreItems.length;
   els.liveAverage.textContent = `平均 ${average.toFixed(1)}`;
 }
 
+function addCustomScoreTag() {
+  const tagName = els.customScoreInput.value.trim();
+  if (!tagName) {
+    els.customScoreInput.focus();
+    showToast("请输入标签名称");
+    return;
+  }
+
+  const duplicated = state.scoreItems.some((item) => item.tagName === tagName);
+  if (duplicated) {
+    showToast("这个标签已经在评分列表里");
+    return;
+  }
+
+  state.scoreItems.push({
+    id: createId("score"),
+    tagName,
+    score: 8,
+  });
+  els.customScoreInput.value = "";
+  renderScoreList();
+  showToast("评价标签已添加");
+}
+
+function removeScoreItem(scoreId) {
+  if (state.scoreItems.length <= 1) {
+    showToast("至少保留 1 个评分标签");
+    return;
+  }
+
+  state.scoreItems = state.scoreItems.filter((item) => item.id !== scoreId);
+  renderScoreList();
+  showToast("评分标签已删除");
+}
+
 function getCurrentScoreItems() {
-  return Array.from(els.scoreInputs).map((input) => ({
-    tagName: input.dataset.score,
-    score: Number(input.value),
+  return state.scoreItems.map((item) => ({
+    tagName: item.tagName,
+    score: Number(item.score),
   }));
 }
 
@@ -264,17 +353,26 @@ function renderImagePreviews() {
 function handleSave(event) {
   event.preventDefault();
 
-  const placeName = els.placeInput.value.trim();
-  if (!placeName) {
-    els.placeInput.focus();
-    showToast("请先输入地点或使用当前位置");
+  const checkInPoint = els.checkInPointInput.value.trim();
+  const address = els.placeInput.value.trim();
+
+  if (!checkInPoint) {
+    els.checkInPointInput.focus();
+    showToast("请先输入打卡点名称");
+    return;
+  }
+
+  if (state.scoreItems.length === 0) {
+    showToast("请至少保留 1 个评分标签");
     return;
   }
 
   const record = {
-    id: crypto.randomUUID(),
+    id: createId("record"),
     place: {
-      name: placeName,
+      checkInPoint: checkInPoint,
+      name: checkInPoint,
+      address: address,
       source: state.locationSource.method,
       sourceLabel: state.locationSource.label,
       capturedAt: state.locationSource.capturedAt,
@@ -299,16 +397,15 @@ function handleSave(event) {
 function resetForm() {
   state.currentTime = new Date();
   state.locationSource = { ...DEFAULT_LOCATION_SOURCE };
+  state.scoreItems = createDefaultScoreItems();
   state.selectedImages = [];
+  els.checkInPointInput.value = "";
   els.placeInput.value = "";
+  els.customScoreInput.value = "";
   els.noteInput.value = "";
-  els.scoreInputs.forEach((input) => {
-    input.value = "8";
-    input.closest(".score-row").querySelector("output").value = "8";
-  });
   renderTime();
   renderLocationStatus();
-  renderScores();
+  renderScoreList();
   renderImagePreviews();
 }
 
@@ -362,6 +459,7 @@ function renderDetail() {
   const place = getRecordPlace(record);
   const imagePaths = record.imagePaths || [];
   const imageNames = record.imageNames || [];
+  const scoreItems = record.scoreItems || [];
   const placeFields = getPlaceDetailFields(place, record);
 
   els.detailPanel.innerHTML = `
@@ -383,7 +481,7 @@ function renderDetail() {
     <section class="detail-section">
       <h4>评分明细</h4>
       <div class="detail-grid">
-        ${record.scoreItems
+        ${scoreItems
           .map(
             (item) => `
               <div class="detail-field">
@@ -423,9 +521,10 @@ function renderDetail() {
 function getRecordPlace(record) {
   const place = record.place || {};
   const hasLegacyCoordinates = Number.isFinite(place.latitude) || Number.isFinite(place.longitude);
+  const checkInPoint = place.checkInPoint || place.name || "未命名打卡点";
 
   return {
-    name: place.name || "未命名地点",
+    name: checkInPoint,
     address: place.address || "",
     sourceLabel: place.sourceLabel || (hasLegacyCoordinates ? "旧版记录" : "手动输入"),
     capturedAt: place.capturedAt || null,
@@ -434,13 +533,14 @@ function getRecordPlace(record) {
 
 function getPlaceDetailFields(place, record) {
   const fields = [
-    ["地点", place.name],
-    ["记录方式", place.sourceLabel],
+    ["打卡点", place.name],
   ];
 
   if (place.address) {
-    fields.push(["地址", place.address]);
+    fields.push(["具体地址", place.address]);
   }
+
+  fields.push(["记录方式", place.sourceLabel]);
 
   if (place.capturedAt) {
     fields.push(["定位时间", formatDateTime(new Date(place.capturedAt))]);
@@ -494,9 +594,10 @@ function saveRecords() {
 }
 
 function averageScore(record) {
-  if (!record.scoreItems.length) return 0;
-  const sum = record.scoreItems.reduce((total, item) => total + Number(item.score), 0);
-  return sum / record.scoreItems.length;
+  const scoreItems = record.scoreItems || [];
+  if (!scoreItems.length) return 0;
+  const sum = scoreItems.reduce((total, item) => total + Number(item.score), 0);
+  return sum / scoreItems.length;
 }
 
 function formatDateTime(date) {

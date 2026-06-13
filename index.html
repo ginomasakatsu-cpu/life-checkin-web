@@ -51,14 +51,23 @@
                 <span class="status-pill">定位 / 手动</span>
               </div>
               <div class="place-editor">
+                <label class="place-name-field">
+                  <span>打卡点</span>
+                  <input
+                    id="checkin-point-input"
+                    type="text"
+                    placeholder="输入地点名称，例如餐厅、学校、公园"
+                    autocomplete="organization"
+                    required
+                  />
+                </label>
                 <label>
-                  <span>地点</span>
+                  <span>具体地址</span>
                   <input
                     id="place-input"
                     type="text"
-                    placeholder="输入地点，例如学校、餐厅、公园"
+                    placeholder="手动输入地址，或使用当前位置自动填入"
                     autocomplete="street-address"
-                    required
                   />
                 </label>
                 <div class="place-actions">
@@ -89,23 +98,11 @@
                 <span>体验评分</span>
                 <span class="score-average" id="live-average">平均 8.0</span>
               </div>
-              <div class="score-list" id="score-list">
-                <label class="score-row">
-                  <span>环境</span>
-                  <input type="range" min="1" max="10" value="8" data-score="环境" />
-                  <output>8</output>
-                </label>
-                <label class="score-row">
-                  <span>教学质量</span>
-                  <input type="range" min="1" max="10" value="8" data-score="教学质量" />
-                  <output>8</output>
-                </label>
-                <label class="score-row">
-                  <span>食堂环境</span>
-                  <input type="range" min="1" max="10" value="8" data-score="食堂环境" />
-                  <output>8</output>
-                </label>
+              <div class="score-tag-editor">
+                <input id="custom-score-input" type="text" placeholder="输入自定义标签，例如卫生、排队时间" />
+                <button class="ghost-button" id="add-score-tag" type="button">添加标签</button>
               </div>
+              <div class="score-list" id="score-list"></div>
             </section>
 
             <section class="panel">
