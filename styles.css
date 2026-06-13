@@ -207,10 +207,42 @@ button {
   font-weight: 700;
 }
 
-.place-grid {
+.place-editor {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: 12px;
+}
+
+.place-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+}
+
+.location-button {
+  white-space: nowrap;
+}
+
+.location-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.location-status {
+  min-width: 92px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.location-status.is-success {
+  color: var(--accent-strong);
+}
+
+.location-status.is-error {
+  color: var(--danger);
 }
 
 label {
@@ -630,9 +662,14 @@ input[type="range"] {
     align-items: stretch;
   }
 
-  .place-grid,
+  .place-editor,
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .place-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .score-row {

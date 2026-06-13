@@ -1,13 +1,13 @@
 const STORAGE_KEY = "life-checkin-web-records-v1";
-const PLACE = {
-  name: "合肥工业大学屯溪路校区",
-  address: "安徽省合肥市包河区屯溪路 193 号",
-  latitude: 31.843559,
-  longitude: 117.295754,
+const DEFAULT_LOCATION_SOURCE = {
+  method: "manual",
+  label: "手动输入",
+  capturedAt: null,
 };
 
 const state = {
   currentTime: new Date(),
+  locationSource: { ...DEFAULT_LOCATION_SOURCE },
   selectedImages: [],
   records: [],
   selectedRecordId: null,
@@ -20,6 +20,9 @@ const els = {
   currentTime: document.querySelector("#current-time"),
   refreshTime: document.querySelector("#refresh-time"),
   resetForm: document.querySelector("#reset-form"),
+  placeInput: document.querySelector("#place-input"),
+  useLocation: document.querySelector("#use-location"),
+  locationStatus: document.querySelector("#location-status"),
   scoreInputs: document.querySelectorAll("[data-score]"),
   liveAverage: document.querySelector("#live-average"),
   imageInput: document.querySelector("#image-input"),
@@ -37,6 +40,7 @@ function init() {
   state.selectedRecordId = state.records[0]?.id ?? null;
   bindEvents();
   renderTime();
+  renderLocationStatus();
   renderScores();
   renderImagePreviews();
   renderHistory();
@@ -54,6 +58,7 @@ function bindEvents() {
   });
 
   els.resetForm.addEventListener("click", resetForm);
+  els.useLocation.addEventListener("click", handleUseLocation);
 
   els.scoreInputs.forEach((input) => {
     input.addEventListener("input", () => {
@@ -80,6 +85,56 @@ function setView(viewName) {
 function renderTime() {
   els.currentTime.textContent = formatDateTime(state.currentTime);
   els.currentTime.dateTime = state.currentTime.toISOString();
+}
+
+function renderLocationStatus(status = state.locationSource.label, tone = "neutral") {
+  els.locationStatus.textContent = status;
+  els.locationStatus.classList.toggle("is-success", tone === "success");
+  els.locationStatus.classList.toggle("is-error", tone === "error");
+}
+
+function handleUseLocation() {
+  if (!window.isSecureContext) {
+    renderLocationStatus("定位需要 HTTPS", "error");
+    showToast("定位需要 HTTPS 环境，请手动输入地点");
+    return;
+  }
+
+  if (!("geolocation" in navigator)) {
+    renderLocationStatus("当前浏览器不支持定位", "error");
+    showToast("当前浏览器不支持定位，请手动输入地点");
+    return;
+  }
+
+  els.useLocation.disabled = true;
+  renderLocationStatus("定位中...");
+
+  navigator.geolocation.getCurrentPosition(
+    () => {
+      state.locationSource = {
+        method: "browser",
+        label: "浏览器定位",
+        capturedAt: new Date().toISOString(),
+      };
+      if (!els.placeInput.value.trim()) {
+        els.placeInput.value = "当前位置";
+      }
+      renderLocationStatus("已定位，可编辑地点", "success");
+      showToast("已获取当前位置");
+      els.useLocation.disabled = false;
+    },
+    () => {
+      state.locationSource = { ...DEFAULT_LOCATION_SOURCE };
+      renderLocationStatus("定位失败，请手动输入", "error");
+      showToast("定位失败，请手动输入地点");
+      els.useLocation.disabled = false;
+    },
+    {
+      enableHighAccuracy: false,
+      timeout: 10000,
+      maximumAge: 300000,
+    },
+  );
 }
 
 function renderScores() {
@@ -148,9 +203,21 @@ function renderImagePreviews() {
 function handleSave(event) {
   event.preventDefault();
 
+  const placeName = els.placeInput.value.trim();
+  if (!placeName) {
+    els.placeInput.focus();
+    showToast("请先输入地点或使用当前位置");
+    return;
+  }
+
   const record = {
     id: crypto.randomUUID(),
-    place: PLACE,
+    place: {
+      name: placeName,
+      source: state.locationSource.method,
+      sourceLabel: state.locationSource.label,
+      capturedAt: state.locationSource.capturedAt,
+    },
     checkInTime: state.currentTime.toISOString(),
     scoreItems: getCurrentScoreItems(),
     imagePaths: state.selectedImages.map((image) => image.dataUrl),
@@ -170,13 +237,16 @@ function handleSave(event) {
 
 function resetForm() {
   state.currentTime = new Date();
+  state.locationSource = { ...DEFAULT_LOCATION_SOURCE };
   state.selectedImages = [];
+  els.placeInput.value = "";
   els.noteInput.value = "";
   els.scoreInputs.forEach((input) => {
     input.value = "8";
     input.closest(".score-row").querySelector("output").value = "8";
   });
   renderTime();
+  renderLocationStatus();
   renderScores();
   renderImagePreviews();
 }
@@ -190,15 +260,17 @@ function renderHistory() {
   }
 
   state.records.forEach((record) => {
+    const place = getRecordPlace(record);
+    const imagePaths = record.imagePaths || [];
     const button = document.createElement("button");
     button.type = "button";
     button.className = `record-card${record.id === state.selectedRecordId ? " is-selected" : ""}`;
     button.innerHTML = `
       <div class="record-thumb">
-        ${record.imagePaths[0] ? `<img src="${record.imagePaths[0]}" alt="打卡图片缩略图" />` : "<span aria-hidden=\"true\">⌖</span>"}
+        ${imagePaths[0] ? `<img src="${imagePaths[0]}" alt="打卡图片缩略图" />` : "<span aria-hidden=\"true\">⌖</span>"}
       </div>
       <div class="record-meta">
-        <span class="record-title">${escapeHtml(record.place.name)}</span>
+        <span class="record-title">${escapeHtml(place.name)}</span>
         <span class="record-time">${formatDateTime(new Date(record.checkInTime))}</span>
         ${record.note ? `<span class="record-note">${escapeHtml(record.note)}</span>` : ""}
       </div>
@@ -226,22 +298,24 @@ function renderDetail() {
     return;
   }
 
+  const place = getRecordPlace(record);
+  const imagePaths = record.imagePaths || [];
+  const imageNames = record.imageNames || [];
+  const placeFields = getPlaceDetailFields(place, record);
+
   els.detailPanel.innerHTML = `
     <div class="detail-header">
       <div>
-        <h3>${escapeHtml(record.place.name)}</h3>
+        <h3>${escapeHtml(place.name)}</h3>
         <p>${formatDateTime(new Date(record.checkInTime))}</p>
       </div>
       <span class="detail-score">${averageScore(record).toFixed(1)}</span>
     </div>
 
     <section class="detail-section">
-      <h4>地点与坐标</h4>
+      <h4>地点信息</h4>
       <div class="detail-grid">
-        <div class="detail-field"><span>地址</span><span>${escapeHtml(record.place.address)}</span></div>
-        <div class="detail-field"><span>纬度</span><span>${record.place.latitude.toFixed(6)}</span></div>
-        <div class="detail-field"><span>经度</span><span>${record.place.longitude.toFixed(6)}</span></div>
-        <div class="detail-field"><span>图片</span><span>${record.imagePaths.length} 张</span></div>
+        ${placeFields}
       </div>
     </section>
 
@@ -262,12 +336,12 @@ function renderDetail() {
     </section>
 
     ${
-      record.imagePaths.length
+      imagePaths.length
         ? `<section class="detail-section">
             <h4>图片</h4>
             <div class="detail-images">
-              ${record.imagePaths
-                .map((src, index) => `<img src="${src}" alt="${escapeHtml(record.imageNames[index] || "打卡图片")}" />`)
+              ${imagePaths
+                .map((src, index) => `<img src="${src}" alt="${escapeHtml(imageNames[index] || "打卡图片")}" />`)
                 .join("")}
             </div>
           </section>`
@@ -283,6 +357,46 @@ function renderDetail() {
         : ""
     }
   `;
+}
+
+function getRecordPlace(record) {
+  const place = record.place || {};
+  const hasLegacyCoordinates = Number.isFinite(place.latitude) || Number.isFinite(place.longitude);
+
+  return {
+    name: place.name || "未命名地点",
+    address: place.address || "",
+    sourceLabel: place.sourceLabel || (hasLegacyCoordinates ? "旧版记录" : "手动输入"),
+    capturedAt: place.capturedAt || null,
+  };
+}
+
+function getPlaceDetailFields(place, record) {
+  const fields = [
+    ["地点", place.name],
+    ["记录方式", place.sourceLabel],
+  ];
+
+  if (place.address) {
+    fields.push(["地址", place.address]);
+  }
+
+  if (place.capturedAt) {
+    fields.push(["定位时间", formatDateTime(new Date(place.capturedAt))]);
+  }
+
+  fields.push(["图片", `${(record.imagePaths || []).length} 张`]);
+
+  return fields
+    .map(
+      ([label, value]) => `
+        <div class="detail-field">
+          <span>${escapeHtml(label)}</span>
+          <span>${escapeHtml(value)}</span>
+        </div>
+      `,
+    )
+    .join("");
 }
 
 function clearRecords() {
