@@ -436,6 +436,10 @@ async function createPosterDataUrl(record) {
   const scoreItems = record.scoreItems || [];
   const place = getRecordPlace(record);
   const selectedImages = await Promise.all((record.imagePaths || []).slice(0, 3).map(loadImage));
+  const imageSlots = getPosterImageSlots(selectedImages.length, contentWidth);
+  const imageBlockHeight = imageSlots.length
+    ? Math.max(...imageSlots.map((slot) => slot.y + slot.height))
+    : 0;
 
   const measureCanvas = document.createElement("canvas");
   const measureContext = measureCanvas.getContext("2d");
@@ -453,8 +457,6 @@ async function createPosterDataUrl(record) {
     "400 30px Microsoft YaHei, sans-serif",
   );
   const scoreRows = Math.ceil(scoreItems.length / 2);
-  const imageRows = selectedImages.length ? Math.ceil(selectedImages.length / 3) : 0;
-  const imageSize = Math.floor((contentWidth - 24 * 2) / 3);
   const height =
     padding +
     44 +
@@ -464,7 +466,7 @@ async function createPosterDataUrl(record) {
     56 +
     52 +
     scoreRows * 104 +
-    (imageRows ? 56 + imageRows * imageSize + (imageRows - 1) * 24 : 0) +
+    (imageSlots.length ? 60 + imageBlockHeight : 0) +
     56 +
     54 +
     noteLines.length * 40 +
@@ -474,6 +476,8 @@ async function createPosterDataUrl(record) {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   ctx.fillStyle = "#f4f7f4";
   ctx.fillRect(0, 0, width, height);
@@ -538,13 +542,10 @@ async function createPosterDataUrl(record) {
     y += 32;
 
     selectedImages.forEach((image, index) => {
-      const row = Math.floor(index / 3);
-      const col = index % 3;
-      const x = padding + col * (imageSize + 24);
-      const imageY = y + row * (imageSize + 24);
-      drawImageCover(ctx, image, x, imageY, imageSize, imageSize, 16);
+      const slot = imageSlots[index];
+      drawImageCover(ctx, image, padding + slot.x, y + slot.y, slot.width, slot.height, 18);
     });
-    y += imageRows * imageSize + (imageRows - 1) * 24 + 28;
+    y += imageBlockHeight + 28;
   }
 
   ctx.font = "800 34px Microsoft YaHei, sans-serif";
@@ -584,6 +585,32 @@ function loadImage(src) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function getPosterImageSlots(imageCount, contentWidth) {
+  const gap = 24;
+  if (!imageCount) return [];
+
+  if (imageCount === 1) {
+    return [{ x: 0, y: 0, width: contentWidth, height: Math.round(contentWidth * 0.68) }];
+  }
+
+  const halfWidth = Math.floor((contentWidth - gap) / 2);
+  if (imageCount === 2) {
+    return [0, 1].map((index) => ({
+      x: index * (halfWidth + gap),
+      y: 0,
+      width: halfWidth,
+      height: halfWidth,
+    }));
+  }
+
+  const heroHeight = Math.round(contentWidth * 0.56);
+  return [
+    { x: 0, y: 0, width: contentWidth, height: heroHeight },
+    { x: 0, y: heroHeight + gap, width: halfWidth, height: halfWidth },
+    { x: halfWidth + gap, y: heroHeight + gap, width: halfWidth, height: halfWidth },
+  ];
 }
 
 function wrapCanvasText(ctx, text, maxWidth, font) {
@@ -643,6 +670,8 @@ function drawImageCover(ctx, image, x, y, width, height, radius) {
   const sourceY = (image.height - sourceHeight) / 2;
 
   ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
   ctx.lineTo(x + width - radius, y);
