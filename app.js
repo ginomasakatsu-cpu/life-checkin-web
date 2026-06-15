@@ -28,6 +28,7 @@ const els = {
   currentTime: document.querySelector("#current-time"),
   refreshTime: document.querySelector("#refresh-time"),
   resetForm: document.querySelector("#reset-form"),
+  generatePoster: document.querySelector("#generate-poster"),
   checkInPointInput: document.querySelector("#checkin-point-input"),
   placeInput: document.querySelector("#place-input"),
   useLocation: document.querySelector("#use-location"),
@@ -43,6 +44,11 @@ const els = {
   detailPanel: document.querySelector("#detail-panel"),
   clearRecords: document.querySelector("#clear-records"),
   toast: document.querySelector("#toast"),
+  posterModal: document.querySelector("#poster-modal"),
+  posterPreview: document.querySelector("#poster-preview"),
+  posterDownload: document.querySelector("#poster-download"),
+  posterClose: document.querySelector("#poster-close"),
+  closePosterControls: document.querySelectorAll("[data-close-poster]"),
   emptyHistoryTemplate: document.querySelector("#empty-history-template"),
 };
 
@@ -69,6 +75,7 @@ function bindEvents() {
   });
 
   els.resetForm.addEventListener("click", resetForm);
+  els.generatePoster.addEventListener("click", handleGeneratePoster);
   els.useLocation.addEventListener("click", handleUseLocation);
   els.addScoreTag.addEventListener("click", addCustomScoreTag);
 
@@ -81,6 +88,10 @@ function bindEvents() {
   els.imageInput.addEventListener("change", handleImageSelection);
   els.form.addEventListener("submit", handleSave);
   els.clearRecords.addEventListener("click", clearRecords);
+  els.posterClose.addEventListener("click", hidePosterPreview);
+  els.closePosterControls.forEach((control) => {
+    control.addEventListener("click", hidePosterPreview);
+  });
 }
 
 function setView(viewName) {
@@ -350,24 +361,22 @@ function renderImagePreviews() {
   });
 }
 
-function handleSave(event) {
-  event.preventDefault();
-
+function getCurrentDraft() {
   const checkInPoint = els.checkInPointInput.value.trim();
   const address = els.placeInput.value.trim();
 
   if (!checkInPoint) {
     els.checkInPointInput.focus();
     showToast("请先输入打卡点名称");
-    return;
+    return null;
   }
 
   if (state.scoreItems.length === 0) {
     showToast("请至少保留 1 个评分标签");
-    return;
+    return null;
   }
 
-  const record = {
+  return {
     id: createId("record"),
     place: {
       checkInPoint: checkInPoint,
@@ -383,6 +392,13 @@ function handleSave(event) {
     imageNames: state.selectedImages.map((image) => image.name),
     note: els.noteInput.value.trim(),
   };
+}
+
+function handleSave(event) {
+  event.preventDefault();
+
+  const record = getCurrentDraft();
+  if (!record) return;
 
   state.records = [record, ...state.records].sort((a, b) => new Date(b.checkInTime) - new Date(a.checkInTime));
   state.selectedRecordId = record.id;
@@ -392,6 +408,260 @@ function handleSave(event) {
   renderDetail();
   setView("history");
   showToast("打卡已保存");
+}
+
+async function handleGeneratePoster() {
+  const draft = getCurrentDraft();
+  if (!draft) return;
+
+  els.generatePoster.disabled = true;
+  showToast("正在生成长图...");
+
+  try {
+    const dataUrl = await createPosterDataUrl(draft);
+    showPosterPreview(dataUrl, draft);
+    showToast("长图已生成");
+  } catch (error) {
+    console.error(error);
+    showToast("生成图片失败，请稍后重试");
+  } finally {
+    els.generatePoster.disabled = false;
+  }
+}
+
+async function createPosterDataUrl(record) {
+  const width = 1080;
+  const padding = 72;
+  const contentWidth = width - padding * 2;
+  const scoreItems = record.scoreItems || [];
+  const place = getRecordPlace(record);
+  const selectedImages = await Promise.all((record.imagePaths || []).slice(0, 3).map(loadImage));
+
+  const measureCanvas = document.createElement("canvas");
+  const measureContext = measureCanvas.getContext("2d");
+  const titleLines = wrapCanvasText(measureContext, place.name, contentWidth, "700 58px Microsoft YaHei, sans-serif");
+  const addressLines = wrapCanvasText(
+    measureContext,
+    place.address || "未填写具体地址",
+    contentWidth,
+    "400 30px Microsoft YaHei, sans-serif",
+  );
+  const noteLines = wrapCanvasText(
+    measureContext,
+    record.note || "未填写备注",
+    contentWidth - 48,
+    "400 30px Microsoft YaHei, sans-serif",
+  );
+  const scoreRows = Math.ceil(scoreItems.length / 2);
+  const imageRows = selectedImages.length ? Math.ceil(selectedImages.length / 3) : 0;
+  const imageSize = Math.floor((contentWidth - 24 * 2) / 3);
+  const height =
+    padding +
+    44 +
+    titleLines.length * 66 +
+    42 +
+    addressLines.length * 40 +
+    56 +
+    52 +
+    scoreRows * 104 +
+    (imageRows ? 56 + imageRows * imageSize + (imageRows - 1) * 24 : 0) +
+    56 +
+    54 +
+    noteLines.length * 40 +
+    92;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#f4f7f4";
+  ctx.fillRect(0, 0, width, height);
+  fillRoundedRect(ctx, 36, 36, width - 72, height - 72, 28, "#ffffff");
+
+  let y = padding;
+  ctx.font = "800 26px Microsoft YaHei, sans-serif";
+  ctx.fillStyle = "#145a43";
+  fillRoundedRect(ctx, padding, y, 154, 44, 22, "#e5f3ed");
+  ctx.fillText("生活打卡", padding + 24, y + 31);
+  y += 82;
+
+  ctx.fillStyle = "#18201c";
+  ctx.font = "800 58px Microsoft YaHei, sans-serif";
+  y = drawTextLines(ctx, titleLines, padding, y, 66);
+
+  ctx.font = "400 30px Microsoft YaHei, sans-serif";
+  ctx.fillStyle = "#657168";
+  ctx.fillText(formatDateTime(new Date(record.checkInTime)), padding, y + 12);
+  y += 58;
+
+  ctx.font = "700 28px Microsoft YaHei, sans-serif";
+  ctx.fillStyle = "#267358";
+  ctx.fillText("具体地址", padding, y);
+  y += 36;
+
+  ctx.font = "400 30px Microsoft YaHei, sans-serif";
+  ctx.fillStyle = "#314038";
+  y = drawTextLines(ctx, addressLines, padding, y, 40);
+  y += 44;
+
+  ctx.font = "800 34px Microsoft YaHei, sans-serif";
+  ctx.fillStyle = "#18201c";
+  ctx.fillText("体验评分", padding, y);
+  y += 32;
+
+  const cardGap = 20;
+  const scoreCardWidth = (contentWidth - cardGap) / 2;
+  scoreItems.forEach((item, index) => {
+    const row = Math.floor(index / 2);
+    const col = index % 2;
+    const x = padding + col * (scoreCardWidth + cardGap);
+    const cardY = y + row * 104;
+    fillRoundedRect(ctx, x, cardY, scoreCardWidth, 78, 16, "#f8fbf8");
+    ctx.font = "700 28px Microsoft YaHei, sans-serif";
+    ctx.fillStyle = "#18201c";
+    ctx.fillText(item.tagName, x + 24, cardY + 49);
+    ctx.font = "900 38px Microsoft YaHei, sans-serif";
+    ctx.fillStyle = "#145a43";
+    ctx.textAlign = "right";
+    ctx.fillText(`${item.score}`, x + scoreCardWidth - 58, cardY + 52);
+    ctx.font = "700 22px Microsoft YaHei, sans-serif";
+    ctx.fillText("/10", x + scoreCardWidth - 22, cardY + 50);
+    ctx.textAlign = "left";
+  });
+  y += scoreRows * 104 + 16;
+
+  if (selectedImages.length) {
+    ctx.font = "800 34px Microsoft YaHei, sans-serif";
+    ctx.fillStyle = "#18201c";
+    ctx.fillText("本地图片", padding, y);
+    y += 32;
+
+    selectedImages.forEach((image, index) => {
+      const row = Math.floor(index / 3);
+      const col = index % 3;
+      const x = padding + col * (imageSize + 24);
+      const imageY = y + row * (imageSize + 24);
+      drawImageCover(ctx, image, x, imageY, imageSize, imageSize, 16);
+    });
+    y += imageRows * imageSize + (imageRows - 1) * 24 + 28;
+  }
+
+  ctx.font = "800 34px Microsoft YaHei, sans-serif";
+  ctx.fillStyle = "#18201c";
+  ctx.fillText("备注", padding, y);
+  y += 26;
+
+  fillRoundedRect(ctx, padding, y, contentWidth, noteLines.length * 40 + 42, 18, "#f8fbf8");
+  ctx.font = "400 30px Microsoft YaHei, sans-serif";
+  ctx.fillStyle = "#314038";
+  drawTextLines(ctx, noteLines, padding + 24, y + 44, 40);
+
+  ctx.font = "700 24px Microsoft YaHei, sans-serif";
+  ctx.fillStyle = "#657168";
+  ctx.fillText("由生活打卡 Web 生成", padding, height - 72);
+
+  return canvas.toDataURL("image/png");
+}
+
+function showPosterPreview(dataUrl, record) {
+  els.posterPreview.src = dataUrl;
+  els.posterDownload.href = dataUrl;
+  els.posterDownload.download = `${sanitizeFileName(getRecordPlace(record).name)}-生活打卡长图.png`;
+  els.posterModal.classList.add("is-visible");
+  els.posterModal.setAttribute("aria-hidden", "false");
+}
+
+function hidePosterPreview() {
+  els.posterModal.classList.remove("is-visible");
+  els.posterModal.setAttribute("aria-hidden", "true");
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+function wrapCanvasText(ctx, text, maxWidth, font) {
+  ctx.font = font;
+  const value = String(text || "").trim();
+  if (!value) return [""];
+
+  const lines = [];
+  let line = "";
+  Array.from(value).forEach((char) => {
+    if (char === "\n") {
+      lines.push(line);
+      line = "";
+      return;
+    }
+
+    const nextLine = line + char;
+    if (ctx.measureText(nextLine).width > maxWidth && line) {
+      lines.push(line);
+      line = char;
+      return;
+    }
+    line = nextLine;
+  });
+
+  if (line) lines.push(line);
+  return lines;
+}
+
+function drawTextLines(ctx, lines, x, y, lineHeight) {
+  lines.forEach((line, index) => {
+    ctx.fillText(line, x, y + index * lineHeight);
+  });
+  return y + lines.length * lineHeight;
+}
+
+function fillRoundedRect(ctx, x, y, width, height, radius, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.fill();
+}
+
+function drawImageCover(ctx, image, x, y, width, height, radius) {
+  const scale = Math.max(width / image.width, height / image.height);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  const sourceX = (image.width - sourceWidth) / 2;
+  const sourceY = (image.height - sourceHeight) / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.clip();
+  ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+  ctx.restore();
+}
+
+function sanitizeFileName(value) {
+  return String(value || "生活打卡")
+    .replace(/[\\/:*?"<>|]/g, "")
+    .slice(0, 24);
 }
 
 function resetForm() {

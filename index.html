@@ -129,6 +129,7 @@
 
             <div class="form-actions">
               <button class="primary-button" type="submit">保存打卡</button>
+              <button class="ghost-button" id="generate-poster" type="button">生成图片</button>
               <button class="ghost-button" id="reset-form" type="button">重置</button>
             </div>
           </form>
@@ -157,6 +158,26 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div class="poster-modal" id="poster-modal" aria-hidden="true">
+      <div class="poster-backdrop" data-close-poster></div>
+      <section class="poster-dialog" role="dialog" aria-modal="true" aria-labelledby="poster-title">
+        <div class="poster-header">
+          <div>
+            <h2 id="poster-title">打卡长图</h2>
+            <p>可下载到手机后保存到相册</p>
+          </div>
+          <button class="poster-close" id="poster-close" type="button" aria-label="关闭长图预览">×</button>
+        </div>
+        <div class="poster-preview-frame">
+          <img id="poster-preview" alt="打卡长图预览" />
+        </div>
+        <div class="poster-actions">
+          <a class="primary-button" id="poster-download" href="#" download="生活打卡长图.png">下载图片</a>
+          <button class="ghost-button" type="button" data-close-poster>关闭预览</button>
+        </div>
+      </section>
+    </div>
 
     <template id="empty-history-template">
       <div class="empty-state">

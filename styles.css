@@ -467,6 +467,11 @@ input[type="range"] {
   color: var(--accent-strong);
 }
 
+.ghost-button:disabled {
+  cursor: wait;
+  opacity: 0.64;
+}
+
 .ghost-button.danger {
   color: var(--danger);
 }
@@ -666,6 +671,97 @@ input[type="range"] {
   opacity: 1;
 }
 
+.poster-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+}
+
+.poster-modal.is-visible {
+  display: block;
+}
+
+.poster-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 18, 15, 0.54);
+}
+
+.poster-dialog {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  width: min(560px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
+  margin: 14px auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.poster-header,
+.poster-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.poster-header h2,
+.poster-header p {
+  margin: 0;
+}
+
+.poster-header h2 {
+  font-size: 20px;
+}
+
+.poster-header p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.poster-close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.poster-preview-frame {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.poster-preview-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.poster-actions {
+  flex-wrap: wrap;
+}
+
+.poster-actions .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -728,6 +824,19 @@ input[type="range"] {
 
   .score-delete-button {
     width: 100%;
+  }
+
+  .poster-dialog {
+    width: calc(100vw - 18px);
+    max-height: calc(100vh - 18px);
+    margin: 9px auto;
+    padding: 12px;
+  }
+
+  .poster-header,
+  .poster-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .record-card {
